@@ -1,6 +1,6 @@
 import { buildConfigFromPackageJson } from './packageJson'
 import * as vscode from 'vscode'
-import { RunButton } from './types'
+import { ButtonOpts, CommandOpts } from './types'
 import * as path from 'path'
 
 const registerCommand = vscode.commands.registerCommand
@@ -13,15 +13,15 @@ const init = async (context: vscode.ExtensionContext) => {
 	const defaultColor = config.get<string>('defaultColor')
 	const reloadButton = config.get<string>('reloadButton')
 	const loadNpmCommands = config.get<boolean>('loadNpmCommands')
-	const cmds = config.get<RunButton[]>('commands')
-	const commands = []
+	const cmds = config.get<CommandOpts[]>('commands')
+	const commands: CommandOpts[] = []
 
 	if (reloadButton !== null) {
 		loadButton({
-			vsCommand: 'extension.refreshButtons',
-			name: reloadButton || '↻',
-			color: defaultColor || 'white',
-			command: 'Refreshes the action buttons'
+			command: 'extension.refreshButtons',
+			name: reloadButton,
+			tooltip: 'Refreshes the action buttons',
+			color: defaultColor,
 		})
 	}
 	else {
@@ -43,7 +43,7 @@ const init = async (context: vscode.ExtensionContext) => {
 	if (commands.length) {
 		const terminals: { [name: string]: vscode.Terminal } = {}
 		commands.forEach(
-			({ cwd, command, name, color, singleInstance, focus, useVsCodeApi }: RunButton) => {
+			({ cwd, command, name, tooltip, color, singleInstance, focus, useVsCodeApi, args }: CommandOpts) => {
 				const vsCommand = `extension.${name.replace(' ', '')}`
 
 				const disposable = registerCommand(vsCommand, async () => {
@@ -77,7 +77,7 @@ const init = async (context: vscode.ExtensionContext) => {
 						fileExtname: (vscode.window.activeTextEditor) ? path.parse(path.basename(vscode.window.activeTextEditor.document.fileName)).ext : null,
 
 						// - the task runner's current working directory on startup
-						cwd: cwd || vscode.workspace.rootPath ||  require('os').homedir(),
+						cwd: cwd || vscode.workspace.rootPath || require('os').homedir(),
 
 						//- the current selected line number in the active file
 						lineNumber: (vscode.window.activeTextEditor) ? vscode.window.activeTextEditor.selection.active.line + 1 : null,
@@ -89,8 +89,13 @@ const init = async (context: vscode.ExtensionContext) => {
 						execPath: process.execPath
 					}
 
+					if (!command) {
+						vscode.window.showErrorMessage('No command to execute for this action');
+						return
+					}
+
 					if (useVsCodeApi) {
-						vscode.commands.executeCommand(command);
+						vscode.commands.executeCommand(command, ...args);
 					} else {
 						let assocTerminal = terminals[vsCommand]
 						if (!assocTerminal) {
@@ -116,9 +121,9 @@ const init = async (context: vscode.ExtensionContext) => {
 				disposables.push(disposable)
 
 				loadButton({
-					vsCommand,
-					command,
+					command: vsCommand,
 					name,
+					tooltip: tooltip || command,
 					color: color || defaultColor,
 				})
 			}
@@ -133,16 +138,16 @@ const init = async (context: vscode.ExtensionContext) => {
 
 function loadButton({
 	command,
+	tooltip,
 	name,
 	color,
-	vsCommand
-}: RunButton) {
+}: ButtonOpts) {
 	const runButton = vscode.window.createStatusBarItem(1, 0)
 	runButton.text = name
-	runButton.color = color || 'white'
-	runButton.tooltip = command
+	runButton.color = color
+	runButton.tooltip = tooltip
 
-	runButton.command = vsCommand
+	runButton.command = command
 	runButton.show()
 	disposables.push(runButton)
 }
